@@ -17,6 +17,10 @@ import com.beust.klaxon.Parser
 import com.beust.klaxon.JsonObject
 
 import au.gov.api.config.*
+import au.gov.api.servicecatalogue.Diff.HTMLDiffOutputGenerator
+import au.gov.api.servicecatalogue.Diff.MyersDiff
+import au.gov.api.servicecatalogue.Diff.TextDiff
+import java.sql.Timestamp
 
 @RestController
 class APIController {
@@ -30,10 +34,18 @@ class APIController {
     @Autowired
     private lateinit var environment: Environment
 
+    @Autowired
+    private lateinit var ghapi:GitHub
 
     @ResponseStatus(HttpStatus.FORBIDDEN)
     class UnauthorisedToModifyServices() : RuntimeException()
     class UnauthorisedToViewServices() : RuntimeException()
+
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    class NoContentFound(override val message: String?) : java.lang.Exception()
+
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    class InvallidRequest(override val message: String?) : java.lang.Exception()
 
     private fun isAuthorisedToSaveService(request:HttpServletRequest, space:String):Boolean{
         if(environment.getActiveProfiles().contains("prod")){
@@ -141,9 +153,16 @@ class APIController {
     fun index(request:HttpServletRequest): IndexDTO {
         val output = mutableListOf<IndexServiceDTO>()
         val auth = isAuthorisedToSaveService(request,"admin")
+
         for(service in repository.findAll(auth)){
+            val ingestSrc = service.metadata.ingestSource
+            if (ingestSrc.contains("github",true)) {
+
+            }
+
                 output.add(IndexServiceDTO(service.id!!, service.currentContent().name, service.currentContent().description, service.tags, service.logo, service.metadata))
         }
+
         return IndexDTO(output)
     }
 
@@ -173,7 +192,79 @@ turn this off for now to prevent !visibility data leaking out
         return BackupDTO(repository.findAll())
     }
 */
+    @CrossOrigin
+    @GetMapping("/colab/{id}")
+    fun getColab(request:HttpServletRequest,
+                 @PathVariable id: String,
+                 @RequestParam(required = false, defaultValue = "false") showall: Boolean,
+                 @RequestParam(required = false, defaultValue = "true") sort: Boolean,
+                 @RequestParam(required = false, defaultValue = "false") flush: Boolean,
+                 @RequestParam(required = false, defaultValue = "15") size: Int,
+                 @RequestParam(defaultValue = "1") page: Int
+                 ): PageResult<GitHub.Conversation> {
+        val service = repository.findById(id,false)
+        val ingestSrc = service.metadata.ingestSource
+        if (ingestSrc.contains("github",true))
+        {
+            if (flush)
+            {
+                ghapi.clearCacheForRepo(GitHub.getUserGitHubUri(ingestSrc),GitHub.getRepoGitHubUri(ingestSrc))
+            }
+            var fullList = ghapi.getGitHubConvos(GitHub.getUserGitHubUri(ingestSrc),GitHub.getRepoGitHubUri(ingestSrc),showall)
+            return PageResult(ghapi.getGitHubConvosHATEOS(fullList,sort,size,page),URLHelper().getURL(request),fullList.count())
+        }else{
+            throw APIController.NoContentFound("This service is not connected to github")
+        }
+    }
 
+    @CrossOrigin
+    @GetMapping("/colab/{id}/comments")
+    fun getColabComments(request:HttpServletRequest,
+                 @PathVariable id: String,
+                 @RequestParam(required = false, defaultValue = "") convoId: String,
+                 @RequestParam(required = false, defaultValue = "") convoType: String,
+                 @RequestParam(required = false, defaultValue = "false") flush: Boolean,
+                 @RequestParam(required = false, defaultValue = "15") size: Int,
+                 @RequestParam(defaultValue = "1") page: Int
+    ): PageResult<GitHub.Comment> {
+        if (convoId=="" || convoType=="") throw NoContentFound("The 'convoId' and 'convoType' parameters must be set")
+        val service = repository.findById(id,false)
+        val ingestSrc = service.metadata.ingestSource
+        if (ingestSrc.contains("github",true))
+        {
+            if (flush)
+            {
+                ghapi.clearCacheForRepo(GitHub.getUserGitHubUri(ingestSrc),GitHub.getRepoGitHubUri(ingestSrc))
+            }
+            var fullList = ghapi.getComments(GitHub.getUserGitHubUri(ingestSrc),GitHub.getRepoGitHubUri(ingestSrc),convoType,convoId)
+            return PageResult(ghapi.getGitHubCommentsHATEOS(fullList,size,page),URLHelper().getURL(request),fullList.count())
+        }else{
+            throw APIController.NoContentFound("This service is not connected to github")
+        }
+    }
+
+    @CrossOrigin
+    @GetMapping("/colab/{id}/comments/count")
+    fun getColabComments(request:HttpServletRequest,
+                         @PathVariable id: String,
+                         @RequestParam(required = false, defaultValue = "false") countClosed: Boolean,
+                         @RequestParam(required = false, defaultValue = "true") countPRComments: Boolean,
+                         @RequestParam(defaultValue = "1") page: Int
+    ): Int {
+        val service = repository.findById(id,false)
+        val ingestSrc = service.metadata.ingestSource
+        if (ingestSrc.contains("github",true))
+        {
+            var convoCount = ghapi.getConvoCount(GitHub.getUserGitHubUri(ingestSrc),GitHub.getRepoGitHubUri(ingestSrc),countClosed,countPRComments)
+            var serviceMetadata = service.metadata
+            serviceMetadata.NumberOfConversations = convoCount
+            service.metadata = serviceMetadata
+            repository.save(service)
+            return convoCount
+        }else{
+            throw APIController.NoContentFound("This service is not connected to github")
+        }
+    }
 
     @CrossOrigin
     @GetMapping("/service/{id}")
@@ -188,17 +279,67 @@ turn this off for now to prevent !visibility data leaking out
     }
 
 
+    data class ServiceDescriptionRevisionMetadata (var id:String, var timestamp: String)
+    @CrossOrigin
+    @GetMapping("/service/{id}/revisions")
+    fun getServiceRevisions(request:HttpServletRequest, @PathVariable id: String): List<ServiceDescriptionRevisionMetadata> {
+        val auth = isAuthorisedToSaveService(request,"admin")
+        try{
+            val service = repository.findById(id,auth)
+            var outputList = mutableListOf<ServiceDescriptionRevisionMetadata>()
+            service.revisions.forEachIndexed { index, element ->
+                outputList.add(ServiceDescriptionRevisionMetadata(element.id,element.time))
+            }
+            return outputList
+        } catch (e:Exception){
+            throw UnauthorisedToViewServices()
+        }
+    }
+
+    @CrossOrigin
+    @GetMapping("/service/{id}/compare")
+    fun getServiceComparison(request:HttpServletRequest, @PathVariable id: String,
+                             @RequestParam(required = false, defaultValue = "") original: String,
+                             @RequestParam(required = false, defaultValue = "") new: String,
+                             @RequestParam(required = false, defaultValue = "99") page: Int,
+                             @RequestParam(required = false,defaultValue = "false") lines:Boolean): String {
+        if (original=="" || new=="" || page == 99) throw NoContentFound("The 'original', 'new', and 'page' parameters must be set")
+        val auth = isAuthorisedToSaveService(request,"admin")
+        try{
+            val service = repository.findById(id,auth)
+            val originalRev = service.getRevisionById("#"+original)
+            val newRev = service.getRevisionById("#"+new)
+
+            var originalPage = ""
+            var newPage = ""
+            try {
+                originalPage = originalRev!!.content.pages[page]
+            } catch (e:Exception) {}
+
+            try {
+                newPage = newRev!!.content.pages[page]
+            } catch (e:Exception) {}
+
+            val diffObj = TextDiff(MyersDiff(lines), HTMLDiffOutputGenerator("span","style",lines))
+            return diffObj.generateDiffOutput(originalPage,newPage)
+        } catch (e:Exception){
+            throw UnauthorisedToViewServices()
+        }
+    }
+
+
 
 
     @CrossOrigin
     @PostMapping("/metadata/{id}")
-    fun setMetadata(@RequestBody metadata: Metadata, @PathVariable id:String, request:HttpServletRequest): Metadata{
+    fun setMetadata(@RequestBody metadata: Metadata, @PathVariable id:String, @RequestParam(required = false, defaultValue = "") logo: String,  request:HttpServletRequest): Metadata{
 
         val auth = isAuthorisedToSaveService(request, "admin")
         val service = repository.findById(id,auth)
         
         if(auth) {
             service.metadata = metadata
+            if(logo!="") service.logo = logo
             repository.save(service)
             try {
                 logEvent(request,"Updated","Service",service.id!!,"Metadata")
