@@ -16,6 +16,11 @@ import org.springframework.context.annotation.Bean
 import org.springframework.scheduling.annotation.Scheduled
 import java.sql.SQLException
 
+import io.github.swagger2markup.Swagger2MarkupConverter
+import io.github.swagger2markup.builder.Swagger2MarkupConfigBuilder
+import io.github.swagger2markup.utils.URIUtils
+import org.apache.commons.configuration2.builder.fluent.Configurations
+
 @Service
 class ServiceDescriptionRepositoryImpl : ServiceDescriptionRepository {
 
@@ -37,14 +42,66 @@ class ServiceDescriptionRepositoryImpl : ServiceDescriptionRepository {
             existingSd.revise(mdfm.name, mdfm.description, mdfm.pages, false)
             existingSd.tags = sd.tags
             save(existingSd)
-
         } catch (e: Exception) {
-
             sd.metadata.ingestSource = url
             save(sd)
         }
+    }
+
+    @EventListener(ApplicationReadyEvent::class)
+    @Scheduled(fixedRate = 3600000)
+    fun ingestFromSwagger() {
+        var url = "https://petstore.swagger.io/v2/swagger.json"
+        var configs = Configurations().properties("C:\\Users\\theza\\Desktop\\SwaggerTest\\config.properties")
+        var swagger2MarkupConfig = Swagger2MarkupConfigBuilder(configs).build()
+        var converterBuilder = Swagger2MarkupConverter.from(URIUtils.create(url))
+        converterBuilder.withConfig(swagger2MarkupConfig)
+        var converter = converterBuilder.build()
+        var x = getSDFromSwager(converter.toString())
+
+        try {
+            val existingSd = findByIngestion(url)
+            existingSd.revise(x.currentRevision().content.name, x.currentRevision().content.description, x.currentRevision().content.pages, false)
+            existingSd.tags = x.tags
+            x = existingSd
+        } catch (e: Exception) {
+            x.metadata.ingestSource = url
+        }
+        save(x)
 
     }
+
+    private fun getSDFromSwager(swaggerJson:String):ServiceDescription {
+        var title = swaggerJson.substring(0,swaggerJson.indexOf("\r\n")).substring(2)
+        var input = swaggerJson.replace(Regex("\\<.*?>"),"")
+        var pages = splitPages(input.substring(swaggerJson.indexOf(title)+title.length)).toMutableList()
+        for (i in 0 until pages.count()) {
+            pages[i] = pages[i].substring(pages[i].indexOf("## ")).replace("###","##")
+            pages[i] = pages[i].substring(1)
+        }
+
+
+        return ServiceDescription(title,"blah",pages, listOf("OpenAPISpec:Swagger","Status:Published"),"")
+    }
+
+    private fun splitPages(input:String): List<String> {
+        val thePages = mutableListOf<String>()
+        var currentPage = ""
+        for (line in input.lines()) {
+            if (isH1(line) && currentPage.replace("\n", "") != "") {
+                thePages.add(currentPage)
+                currentPage = ""
+            }
+            currentPage += line + "\n"
+        }
+
+        thePages.add(currentPage)
+
+        return thePages
+    }
+
+    private fun isH1(line: String) = line.startsWith("## ")
+
 
     constructor() {}
 
