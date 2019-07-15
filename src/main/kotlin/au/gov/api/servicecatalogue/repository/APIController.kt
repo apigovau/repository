@@ -120,6 +120,8 @@ class APIController {
 
 	}
 
+    /*
+    //no longer required?
     @CrossOrigin
     @GetMapping("/new")
     fun newService(request:HttpServletRequest, @RequestParam space:String):ServiceDescription{
@@ -139,7 +141,7 @@ class APIController {
         }
 
         throw UnauthorisedToModifyServices()
-    }
+    }*/
 
 
     data class IndexDTO(val content:List<IndexServiceDTO>)
@@ -188,6 +190,7 @@ turn this off for now to prevent !visibility data leaking out
         return BackupDTO(repository.findAll())
     }
 */
+
     @CrossOrigin
     @GetMapping("/colab/{id}")
     fun getColab(request:HttpServletRequest,
@@ -275,6 +278,56 @@ turn this off for now to prevent !visibility data leaking out
     }
 
 
+    data class IngestedServiceDescription(val id: String = "",val name: String = "", val description: String = "", val pages: List<String> = listOf(""),
+                                          var tags: MutableList<String> = mutableListOf(), var logo: String = "", var agency: String = "",
+                                          var ingestSrc: String = "", var space: String = "", var visibility: Boolean = false)
+    @CrossOrigin
+    @PostMapping("/service/{id}")
+    fun setService(request:HttpServletRequest,@PathVariable id:String, @RequestBody sd: IngestedServiceDescription) {
+        if(isAuthorisedToSaveService(request, sd.space)) {
+            var sdExists = false
+            var existinSD = ServiceDescription()
+            var sdToSave = ServiceDescription()
+            try {
+                existinSD = repository.findById(sd.id)
+                sdExists = true
+            } catch (e:Exception) {}
+
+            if (sdExists) {
+                existinSD.revise(sd.name,sd.description,sd.pages,false)
+                existinSD.tags = sd.tags
+                existinSD.logo = sd.logo
+                sdToSave = existinSD
+
+            } else {
+                var newSD = ServiceDescription(sd.name,sd.description,sd.pages,sd.tags,sd.logo)
+                var newMD = Metadata(sd.agency,sd.space,sd.visibility,sd.ingestSrc)
+                newSD.metadata = newMD
+                sdToSave = newSD
+            }
+
+            repository.save(sdToSave)
+
+
+
+            /*val service = ServiceDescription(revision.name, revision.description, revision.pages, listOf(), "")
+
+            if(isAuthorisedToSaveService(request, service.metadata.space)) {
+                repository.save(service)
+                try {
+                    logEvent(request,"Created","Service",service.id!!,revision.name)
+                }
+                catch (e:Exception)
+                { println(e.message)}
+                return service
+            }
+
+            throw UnauthorisedToModifyServices()*/
+        }
+
+    }
+
+
     data class ServiceDescriptionRevisionMetadata (var id:String, var timestamp: String)
     @CrossOrigin
     @GetMapping("/service/{id}/revisions")
@@ -324,8 +377,6 @@ turn this off for now to prevent !visibility data leaking out
     }
 
 
-
-
     @CrossOrigin
     @PostMapping("/metadata/{id}")
     fun setMetadata(@RequestBody metadata: Metadata, @PathVariable id:String, @RequestParam(required = false, defaultValue = "") logo: String,  request:HttpServletRequest): Metadata{
@@ -348,13 +399,15 @@ turn this off for now to prevent !visibility data leaking out
         throw UnauthorisedToModifyServices()
     }
 
+    /*
+    //No Longer required
     @ResponseStatus(HttpStatus.CREATED)  // 201
     @CrossOrigin
     @PostMapping("/service")
     fun setService(@RequestBody revision: ServiceDescriptionContent, request:HttpServletRequest): ServiceDescription {
 
         val service = ServiceDescription(revision.name, revision.description, revision.pages, listOf(), "")
-        
+
         if(isAuthorisedToSaveService(request, service.metadata.space)) {
             repository.save(service)
             try {
@@ -390,7 +443,9 @@ turn this off for now to prevent !visibility data leaking out
         }
 
         throw UnauthorisedToModifyServices()
-    }
+    }*/
+
+
 
 
     @CrossOrigin

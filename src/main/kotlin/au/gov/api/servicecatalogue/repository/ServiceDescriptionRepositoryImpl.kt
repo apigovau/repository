@@ -10,10 +10,7 @@ import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.context.event.EventListener
-import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.context.annotation.Bean
-import org.springframework.scheduling.annotation.Scheduled
 import java.sql.SQLException
 
 @Service
@@ -25,7 +22,7 @@ class ServiceDescriptionRepositoryImpl : ServiceDescriptionRepository {
     @Autowired
     lateinit var dataSource: DataSource
 
-    @EventListener(ApplicationReadyEvent::class)
+    /*@EventListener(ApplicationReadyEvent::class)
     @Scheduled(fixedRate = 3600000)
     fun ingestFromGithub() {
         val url = "https://github.com/apigovau/api-gov-au-definitions/blob/master/api-documentation.md"
@@ -44,7 +41,7 @@ class ServiceDescriptionRepositoryImpl : ServiceDescriptionRepository {
             save(sd)
         }
 
-    }
+    }*/
 
     constructor() {}
 
