@@ -240,7 +240,7 @@ class APIController {
     @CrossOrigin
     @PostMapping("/service")
     fun setService(request:HttpServletRequest, @RequestBody sd: IngestedServiceDescription) : String? {
-        if(isAuthorisedToSaveService(request, sd.space)) {
+        if(isAuthorisedToSaveService(request, "ingestor")) {
             var sdExists = false
             var existinSD = ServiceDescription()
             var sdToSave = ServiceDescription()
@@ -264,8 +264,9 @@ class APIController {
             repository.save(sdToSave)
             return repository.findAll(false)
                     .filter { it.revisions.last().content.name == sdToSave.revisions.last().content.name }.first().id
+        } else {
+            return "Unauthorised"
         }
-        return "Unauthorised"
     }
 
 
