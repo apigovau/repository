@@ -38,8 +38,7 @@ class APIController {
     private lateinit var ghapi:GitHub
 
     @ResponseStatus(HttpStatus.FORBIDDEN)
-    class UnauthorisedToModifyServices() : RuntimeException()
-    class UnauthorisedToViewServices() : RuntimeException()
+    class Unauthorised() : RuntimeException()
 
     @ResponseStatus(HttpStatus.NOT_FOUND)
     class NoContentFound(override val message: String?) : java.lang.Exception()
@@ -120,30 +119,6 @@ class APIController {
 
 	}
 
-    /*
-    //no longer required?
-    @CrossOrigin
-    @GetMapping("/new")
-    fun newService(request:HttpServletRequest, @RequestParam space:String):ServiceDescription{
-        val service = ServiceDescription("NewServiceName", "NewServiceDescription", listOf("# Page1"), listOf(), "")
-
-        if(isAuthorisedToSaveService(request, space)) {
-            service.metadata.space=space
-            service.metadata.visibility = false
-            repository.save(service)
-            try {
-                logEvent(request,"Created","Service",service.id!!,service.revisions.first().content.name)
-            }
-            catch (e:Exception)
-            { println(e.message)}
-
-            return service
-        }
-
-        throw UnauthorisedToModifyServices()
-    }*/
-
-
     data class IndexDTO(val content:List<IndexServiceDTO>)
     data class IndexServiceDTO(val id:String, val name:String, val description:String, val tags:List<String>, val logoURI:String, val metadata:Metadata)
     @CrossOrigin
@@ -155,16 +130,11 @@ class APIController {
         for(service in repository.findAll(auth)){
             val ingestSrc = service.metadata.ingestSource
             if (ingestSrc.contains("github",true)) {
-
             }
-
                 output.add(IndexServiceDTO(service.id!!, service.currentContent().name, service.currentContent().description, service.tags, service.logo, service.metadata))
         }
-
         return IndexDTO(output)
     }
-
-
 
     @CrossOrigin
     @GetMapping("/indexWritable")
@@ -176,20 +146,6 @@ class APIController {
         }
         return IndexDTO(output)
     }
-
-
-
-/*
-
-turn this off for now to prevent !visibility data leaking out
-
-    @CrossOrigin
-    data class BackupDTO(val content:Iterable<ServiceDescription>)
-    @GetMapping("/backup")
-    fun backup(): BackupDTO {
-        return BackupDTO(repository.findAll())
-    }
-*/
 
     @CrossOrigin
     @GetMapping("/colab/{id}")
@@ -273,7 +229,7 @@ turn this off for now to prevent !visibility data leaking out
             val service = repository.findById(id,auth)
             return service.currentContent()
         } catch (e:Exception){
-            throw UnauthorisedToViewServices()
+            throw Unauthorised()
         }
     }
 
@@ -282,8 +238,8 @@ turn this off for now to prevent !visibility data leaking out
                                           var tags: MutableList<String> = mutableListOf(), var logo: String = "", var agency: String = "",
                                           var ingestSrc: String = "", var space: String = "", var visibility: Boolean = false)
     @CrossOrigin
-    @PostMapping("/service/{id}")
-    fun setService(request:HttpServletRequest,@PathVariable id:String, @RequestBody sd: IngestedServiceDescription) {
+    @PostMapping("/service")
+    fun setService(request:HttpServletRequest, @RequestBody sd: IngestedServiceDescription) : String? {
         if(isAuthorisedToSaveService(request, sd.space)) {
             var sdExists = false
             var existinSD = ServiceDescription()
@@ -298,7 +254,6 @@ turn this off for now to prevent !visibility data leaking out
                 existinSD.tags = sd.tags
                 existinSD.logo = sd.logo
                 sdToSave = existinSD
-
             } else {
                 var newSD = ServiceDescription(sd.name,sd.description,sd.pages,sd.tags,sd.logo)
                 var newMD = Metadata(sd.agency,sd.space,sd.visibility,sd.ingestSrc)
@@ -307,24 +262,10 @@ turn this off for now to prevent !visibility data leaking out
             }
 
             repository.save(sdToSave)
-
-
-
-            /*val service = ServiceDescription(revision.name, revision.description, revision.pages, listOf(), "")
-
-            if(isAuthorisedToSaveService(request, service.metadata.space)) {
-                repository.save(service)
-                try {
-                    logEvent(request,"Created","Service",service.id!!,revision.name)
-                }
-                catch (e:Exception)
-                { println(e.message)}
-                return service
-            }
-
-            throw UnauthorisedToModifyServices()*/
+            return repository.findAll(false)
+                    .filter { it.revisions.last().content.name == sdToSave.revisions.last().content.name }.first().id
         }
-
+        return "Unauthorised"
     }
 
 
@@ -341,7 +282,7 @@ turn this off for now to prevent !visibility data leaking out
             }
             return outputList
         } catch (e:Exception){
-            throw UnauthorisedToViewServices()
+            throw Unauthorised()
         }
     }
 
@@ -372,7 +313,7 @@ turn this off for now to prevent !visibility data leaking out
             val diffObj = TextDiff(MyersDiff(lines), HTMLDiffOutputGenerator("span","style",lines))
             return diffObj.generateDiffOutput(originalPage,newPage)
         } catch (e:Exception){
-            throw UnauthorisedToViewServices()
+            throw Unauthorised()
         }
     }
 
@@ -396,57 +337,8 @@ turn this off for now to prevent !visibility data leaking out
             return service.metadata
         }
 
-        throw UnauthorisedToModifyServices()
+        throw Unauthorised()
     }
-
-    /*
-    //No Longer required
-    @ResponseStatus(HttpStatus.CREATED)  // 201
-    @CrossOrigin
-    @PostMapping("/service")
-    fun setService(@RequestBody revision: ServiceDescriptionContent, request:HttpServletRequest): ServiceDescription {
-
-        val service = ServiceDescription(revision.name, revision.description, revision.pages, listOf(), "")
-
-        if(isAuthorisedToSaveService(request, service.metadata.space)) {
-            repository.save(service)
-            try {
-                logEvent(request,"Created","Service",service.id!!,revision.name)
-            }
-            catch (e:Exception)
-            { println(e.message)}
-            return service
-        }
-
-        throw UnauthorisedToModifyServices()
-    }
-
-    @CrossOrigin
-    @ResponseStatus(HttpStatus.OK)  // 200
-    @PostMapping("/service/{id}")
-    fun reviseService(@PathVariable id:String, @RequestBody revision: ServiceDescriptionContent, request:HttpServletRequest): ServiceDescriptionContent {
-        val service = repository.findById(id)
-
-        if(isAuthorisedToSaveService(request, service.metadata.space)) {
-
-            service.revise(revision.name, revision.description, revision.pages)
-
-            repository.save(service)
-            var toRevision = service.revisions.count()
-            var fromRevision = toRevision-1
-            try {
-                logEvent(request,"Updated","Service",service.id!!,"Revision from $fromRevision to $toRevision")
-            }
-            catch (e:Exception)
-            { println(e.message)}
-            return service.currentContent()
-        }
-
-        throw UnauthorisedToModifyServices()
-    }*/
-
-
-
 
     @CrossOrigin
     @ResponseStatus(HttpStatus.OK)  // 200
@@ -465,6 +357,6 @@ turn this off for now to prevent !visibility data leaking out
             return
         }
 
-        throw UnauthorisedToModifyServices()
+        throw Unauthorised()
     }
 }
