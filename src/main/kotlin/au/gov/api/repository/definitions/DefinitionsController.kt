@@ -250,15 +250,31 @@ class DefinitionsController {
     private fun getSpaceFromId(id: String): String {
         return "#" + id.replace("http://api.gov.au/definition/", "").split("/").first()
     }
+    private fun getIdPrefix(exampleId:String):String {
+        var idWithPrefix = exampleId.split('/').last()
+        var output = if (idWithPrefix[0].isLetter()) idWithPrefix.substring(0,idWithPrefix.indexOfFirst{it.isDigit()}) else ""
+        return output
+    }
+
+    private fun getIdForNewDefinition(domain:String):String {
+        var d = domain.replace("#","")
+        var domainDefs = definitionRepository.getAllDefinitionsInDomain(d)
+        var prefix = "de"
+        try {
+            prefix = getIdPrefix(domainDefs[Random().nextInt(domainDefs.count())].identifier)
+        } catch (e:Exception){}
+
+        var newID = "http://api.gov.au/definition/$d/$prefix${domainDefs.count() + 1}"
+        return newID
+    }
 
     @CrossOrigin
     @PostMapping("/definitions/definition")
-    fun postDefinition(request: HttpServletRequest, @RequestParam id: String, @RequestBody definition: NewDefinition, @RequestParam(required = false, defaultValue = "true") domainExists: Boolean) {
+    fun postDefinition(request: HttpServletRequest, @RequestParam id: String, @RequestBody definition: NewDefinition, @RequestParam(required = false, defaultValue = "true") domainExists: Boolean):String {
         if (isAuthorisedToSaveDefinition(request, getSpaceFromId(id))) {
             var exists: Definition? = null
-            if (id != definition.identifier) throw Exception("Supplied identifiers must match, if you wish to change the identifier contact sbr_tdt@sbr.gov.au")
             try {
-                exists = definitionRepository.findOne(id)
+                exists = definitionRepository.findOne("http://api.gov.au/definition/$id")
                 if (exists != null) {
                     if ((exists.domain != definition.domain).or(exists.domainAcronym != definition.domainAcronym)) throw Exception("Cannot change the domain of an existing definition, if you wish to change the domain contact sbr_tdt@sbr.gov.au")
                 }
@@ -267,8 +283,13 @@ class DefinitionsController {
             if (exists == null) {
                 //New definition
                 if (domainExists) {
+                    var newDef = definition
+                    if (newDef.identifier!!.trim().isNotBlank()) throw Exception("New definitions cannot contain an identifier")
+                    newDef.identifier = getIdForNewDefinition(getSpaceFromId(id))
+
                     addDefinitionToExistingDomain(definition)
                     logEvent(request, "Created", "Definition", id, "new", ObjectMapper().writeValueAsString(definition))
+                    return newDef.identifier
                 } else {
                     throw Exception("Cannot create new domain, contact sbr_tdt@sbr.gov.au")
 
@@ -280,10 +301,13 @@ class DefinitionsController {
                     definitionRepository.removeDefinitions(exists.identifier)
                     addDefinitionToExistingDomain(definition)
                     logEvent(request, "Updated", "Definition", id, "new", ObjectMapper().writeValueAsString(exists))
+                    return exists.identifier
                 } else {
                     throw Exception("Cannot create new domain, contact sbr_tdt@sbr.gov.au")
                 }
             }
+        } else {
+            throw Unauthorised()
         }
     }
 
@@ -295,9 +319,8 @@ class DefinitionsController {
             } else {
                 throw Exception("Please check your domain name spelling.  if this is intentional contact sbr_tdt@sbr.gov.au")
             }
-
         } else {
-            throw Exception("You are attempting to add an element to a new domain. if this is intentional override the 'domainExists' flag to false")
+            throw Exception("Domain does not exist")
         }
     }
 
