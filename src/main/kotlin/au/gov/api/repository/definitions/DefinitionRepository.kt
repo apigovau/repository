@@ -443,6 +443,8 @@ class DefinitionRepository {
             q.executeUpdate()
             deleteByTerm("identifier", ident.split("/").last())
             indexWriter.commit()
+            val id = ident.split("/").last()
+            definitions.remove(definitions.first { it.identifier ==  id})
         } catch (e: Exception) {
             e.printStackTrace()
             throw RepositoryException()
