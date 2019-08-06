@@ -28,8 +28,6 @@ data class Meta(val type: String, val directed: Boolean, val verbs: Map<Directio
 @Service
 class RelationshipRepository {
 
-    @Value("\${spring.datasource.url}")
-    var dbUrl: String? = null
 
     @Autowired
     lateinit var dataSource: DataSource
@@ -163,6 +161,7 @@ class RelationshipRepository {
             connection = dataSource.connection
 
             val stmt = connection.createStatement()
+            stmt.executeUpdate("CREATE TABLE IF NOT EXISTS definitions_relation_meta (meta JSONB);")
             val rs = stmt.executeQuery("SELECT meta FROM definitions_relation_meta")
             val rv: MutableList<String> = mutableListOf()
             while (rs.next()) {
@@ -184,6 +183,7 @@ class RelationshipRepository {
             connection = dataSource.connection
 
             val stmt = connection.createStatement()
+            stmt.executeUpdate("CREATE TABLE IF NOT EXISTS definitions_relationships (acronym VARCHAR(5),relType VARCHAR(50), relationship JSONB)")
             val rs = stmt.executeQuery("SELECT * FROM definitions_relationships")
             val rv: MutableList<Relations> = mutableListOf()
             while (rs.next()) {
@@ -223,19 +223,4 @@ class RelationshipRepository {
         addRelationshipToMemoryDB(relation)
     }
 
-    @Bean
-    @Throws(SQLException::class)
-    fun dataSource(): DataSource? {
-        if (dbUrl?.isEmpty() ?: true) {
-            return HikariDataSource()
-        } else {
-            val config = HikariConfig()
-            config.jdbcUrl = dbUrl
-            try {
-                return HikariDataSource(config)
-            } catch (e: Exception) {
-                return null
-            }
-        }
-    }
 }
