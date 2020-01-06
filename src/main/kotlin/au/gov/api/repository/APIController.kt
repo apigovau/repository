@@ -295,6 +295,7 @@ turn this off for now to prevent !visibility data leaking out
                 existinSD.revise(sd.name,sd.description,sd.pages,false)
                 existinSD.tags = sd.tags
                 existinSD.logo = sd.logo
+                existinSD.metadata = Metadata(sd.agency, sd.space, sd.visibility, sd.ingestSrc)
                 sdToSave = existinSD
             } else {
                 var newSD = ServiceDescription(sd.name, sd.description, sd.pages, sd.tags, sd.logo)
@@ -306,7 +307,8 @@ turn this off for now to prevent !visibility data leaking out
             repository.save(sdToSave)
             var idz = repository.findAll(false)
                     .filter { it.revisions.last().content.name == sdToSave.revisions.last().content.name }.first().id.toString()
-            return ResponseEntity(idz,HttpStatus.CREATED)
+            var stat = if(sdExists) HttpStatus.OK else HttpStatus.CREATED
+            return ResponseEntity(idz,stat)
         } else {
             return ResponseEntity(HttpStatus.UNAUTHORIZED)
         }
