@@ -1,4 +1,4 @@
-package au.gov.api.servicecatalogue.repository
+package au.gov.api.repository
 
 import kotlin.collections.Iterable
 import org.springframework.stereotype.Service
@@ -19,12 +19,10 @@ import java.sql.SQLException
 @Service
 class ServiceDescriptionRepositoryImpl : ServiceDescriptionRepository {
 
-    @Value("\${spring.datasource.url}")
-    var dbUrl: String? = null
 
     @Autowired
     lateinit var dataSource: DataSource
-
+/*
     @EventListener(ApplicationReadyEvent::class)
     @Scheduled(fixedRate = 3600000)
     fun ingestFromGithub() {
@@ -45,7 +43,7 @@ class ServiceDescriptionRepositoryImpl : ServiceDescriptionRepository {
         }
 
     }
-
+*/
     constructor() {}
 
     constructor(theDataSource: DataSource) {
@@ -60,6 +58,8 @@ class ServiceDescriptionRepositoryImpl : ServiceDescriptionRepository {
         try {
             connection = dataSource.connection
 
+            val stmt = connection.createStatement()
+            stmt.executeUpdate("CREATE TABLE IF NOT EXISTS service_descriptions (id VARCHAR(50), data JSONB, PRIMARY KEY (id))")
             val q = connection.prepareStatement("select data from service_descriptions where data->'metadata'->>'ingestSource' = ?")
             q.setString(1, uri)
             var rs = q.executeQuery()
@@ -145,6 +145,8 @@ class ServiceDescriptionRepositoryImpl : ServiceDescriptionRepository {
         try {
             connection = dataSource.connection
 
+            val stmt = connection.createStatement()
+            stmt.executeUpdate("CREATE TABLE IF NOT EXISTS service_descriptions (id VARCHAR(50), data JSONB, PRIMARY KEY (id))")
             val q = connection.prepareStatement("SELECT data FROM service_descriptions WHERE id = ?")
             q.setString(1, id)
             var rs = q.executeQuery()
@@ -170,6 +172,8 @@ class ServiceDescriptionRepositoryImpl : ServiceDescriptionRepository {
         try {
             connection = dataSource.connection
 
+            val stmt = connection.createStatement()
+            stmt.executeUpdate("CREATE TABLE IF NOT EXISTS service_descriptions (id VARCHAR(50), data JSONB, PRIMARY KEY (id))")
             val q = connection.prepareStatement("DELETE FROM service_descriptions WHERE id = ?")
             q.setString(1, id)
             q.executeUpdate()
@@ -228,6 +232,7 @@ class ServiceDescriptionRepositoryImpl : ServiceDescriptionRepository {
             connection = dataSource.connection
 
             val stmt = connection.createStatement()
+            stmt.executeUpdate("CREATE TABLE IF NOT EXISTS service_descriptions (id VARCHAR(50), data JSONB, PRIMARY KEY (id))")
             val rs = stmt.executeQuery("SELECT data FROM service_descriptions")
             val rv: MutableList<ServiceDescription> = mutableListOf()
             val om = ObjectMapper()
@@ -247,21 +252,6 @@ class ServiceDescriptionRepositoryImpl : ServiceDescriptionRepository {
         }
     }
 
-    @Bean
-    @Throws(SQLException::class)
-    fun dataSource(): DataSource? {
-        if (dbUrl?.isEmpty() ?: true) {
-            return HikariDataSource()
-        } else {
-            val config = HikariConfig()
-            config.jdbcUrl = dbUrl
-            try {
-                return HikariDataSource(config)
-            } catch (e: Exception) {
-                return null
-            }
-        }
-    }
 }
 
 

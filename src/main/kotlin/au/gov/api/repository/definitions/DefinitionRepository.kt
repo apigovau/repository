@@ -1,7 +1,8 @@
-package au.gov.api.servicecatalogue.repository.definitions
+package au.gov.api.repository.definitions
 
-import au.gov.api.servicecatalogue.repository.QueryLogger
-import au.gov.api.servicecatalogue.repository.RepositoryException
+import au.gov.api.repository.QueryLogger
+import au.gov.api.repository.RepositoryException
+import com.beust.klaxon.Debug
 import com.beust.klaxon.JsonObject
 import com.beust.klaxon.Parser
 import com.fasterxml.jackson.annotation.JsonIgnore
@@ -113,8 +114,6 @@ class DefinitionNotFoundException(id: String?) : Exception(id)
 @Component
 class DefinitionRepository {
 
-    @Value("\${spring.datasource.url}")
-    var dbUrl: String? = null
 
     @Autowired
     lateinit var dataSource: DataSource
@@ -310,6 +309,8 @@ class DefinitionRepository {
         var connection: Connection? = null
         try {
             connection = dataSource.connection
+            val stmt = connection.createStatement()
+            stmt.executeUpdate("CREATE TABLE IF NOT EXISTS definitions (acronym VARCHAR(5), defdomain VARCHAR(100), version VARCHAR(100),sourceURL VARCHAR(2000),ident VARCHAR(200),definition JSON)")
             val q = connection.prepareStatement("SELECT definition, sourceurl FROM definitions WHERE acronym = '$domain'")
             var rs = q.executeQuery()
             val rv: MutableList<DBDef> = mutableListOf()
@@ -410,7 +411,9 @@ class DefinitionRepository {
         var connection: Connection? = null
         try {
             connection = dataSource.connection
-            val stmt = connection.createStatement()
+            var stmt = connection.createStatement()
+            stmt.executeUpdate("CREATE TABLE IF NOT EXISTS definitions (acronym VARCHAR(5), defdomain VARCHAR(100), version VARCHAR(100),sourceURL VARCHAR(2000),ident VARCHAR(200),definition JSON)")
+            stmt = connection.createStatement()
             val rs = stmt.executeQuery("SELECT DISTINCT acronym, defdomain, version FROM definitions")
             val rv: MutableList<Domain> = mutableListOf()
             while (rs.next()) {
@@ -433,11 +436,14 @@ class DefinitionRepository {
         try {
             connection = dataSource.connection
 
+            val stmt = connection.createStatement()
+            stmt.executeUpdate("CREATE TABLE IF NOT EXISTS definitions (acronym VARCHAR(5), defdomain VARCHAR(100), version VARCHAR(100),sourceURL VARCHAR(2000),ident VARCHAR(200),definition JSON)")
             val q = connection.prepareStatement("DELETE FROM definitions WHERE ident = ?")
             q.setString(1, ident)
             q.executeUpdate()
             deleteByTerm("identifier", ident.split("/").last())
             indexWriter.commit()
+            definitions.remove(definitions.first { it.identifier ==  ident})
         } catch (e: Exception) {
             e.printStackTrace()
             throw RepositoryException()
@@ -446,19 +452,4 @@ class DefinitionRepository {
         }
     }
 
-    @Bean
-    @Throws(SQLException::class)
-    fun dataSource(): DataSource? {
-        if (dbUrl?.isEmpty() ?: true) {
-            return HikariDataSource()
-        } else {
-            val config = HikariConfig()
-            config.jdbcUrl = dbUrl
-            try {
-                return HikariDataSource(config)
-            } catch (e: Exception) {
-                return null
-            }
-        }
-    }
 }
