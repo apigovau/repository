@@ -91,7 +91,7 @@ class Definition {
     var sourceURL: String = ""
 }
 
-data class DataType(var type: String = "", var facets: Map<String, String> = mapOf())
+data class DataType(var type: String = "", var facets: Map<String, String> = mapOf(), var values: Array<String>? = null )
 
 data class NewDefinition(
         var name: String = "",
